@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebRemote — Login</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <style>
+    body {
+      background: var(--bg-root);
+      min-height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .login-card {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 2.5rem;
+      width: 100%;
+      max-width: 400px;
+    }
+    .login-brand {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+    .login-brand .icon {
+      width: 52px; height: 52px;
+      border-radius: var(--radius-md);
+      background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+      color: var(--bg-root);
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 1.4rem;
+      margin-bottom: 0.75rem;
+    }
+    .login-brand h1 {
+      font-family: var(--font-display);
+      font-size: 1.4rem;
+      font-weight: 800;
+      color: var(--text-primary);
+      letter-spacing: -0.02em;
+      margin: 0;
+    }
+    .login-brand h1 span { color: var(--text-accent); }
+    .login-brand p {
+      color: var(--text-tertiary);
+      font-size: 0.78rem;
+      margin: 0.25rem 0 0 0;
+    }
+    .login-card label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-secondary);
+      margin-bottom: 0.35rem;
+    }
+    .login-card .form-control {
+      background: var(--bg-root);
+      border: 1px solid var(--border-default);
+      color: var(--text-primary);
+      font-size: 0.88rem;
+      padding: 0.6rem 0.85rem;
+    }
+    .login-card .form-control:focus {
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 0 3px rgba(240,136,62,0.15);
+    }
+    .login-card .btn-login {
+      width: 100%;
+      padding: 0.65rem;
+      font-weight: 700;
+      font-size: 0.85rem;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+      border: none;
+      color: var(--bg-root);
+      transition: all var(--transition-fast);
+    }
+    .login-card .btn-login:hover { opacity: 0.9; transform: translateY(-1px); }
+    .alert { font-size: 0.78rem; padding: 0.5rem 0.75rem; border-radius: var(--radius-sm); margin-bottom: 1rem; display: none; }
+    .alert-danger { background: var(--danger-soft); color: var(--danger); border: 1px solid var(--danger); }
+  </style>
+</head>
+<body>
+  <div class="login-card">
+    <div class="login-brand">
+      <div class="icon"><i class="fas fa-terminal"></i></div>
+      <h1>Web<span>Remote</span></h1>
+      <p>Remote Server Management</p>
+    </div>
+
+    <div class="alert alert-danger" id="loginAlert"><i class="fas fa-circle-xmark me-1"></i> <span id="loginAlertMsg"></span></div>
+
+    <form id="loginForm">
+      <div class="mb-3">
+        <label for="username">Username</label>
+        <input type="text" class="form-control" id="username" name="username" placeholder="admin" autofocus required>
+      </div>
+      <div class="mb-3">
+        <label for="password">Password</label>
+        <input type="password" class="form-control" id="password" name="password" placeholder="&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;" required>
+      </div>
+      <button type="submit" class="btn btn-login" id="loginBtn">
+        <i class="fas fa-right-to-bracket me-2"></i>Sign In
+      </button>
+    </form>
+  </div>
+
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <script>
+  $(function() {
+    var params = new URLSearchParams(window.location.search);
+    if (params.get('expired')) {
+      showAlert('Session expired. Please sign in again.');
+    }
+    $('#loginForm').on('submit', function(e) {
+      e.preventDefault();
+      var $btn = $('#loginBtn').prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Signing In…');
+      $('#loginAlert').hide();
+      $.ajax({
+        url: '/login',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({
+          username: $('#username').val().trim(),
+          password: $('#password').val()
+        })
+      }).done(function(res) {
+        window.location.href = res.next || '/';
+      }).fail(function(xhr) {
+        var msg = xhr.responseJSON ? xhr.responseJSON.error : 'Login failed';
+        showAlert(msg);
+      }).always(function() {
+        $btn.prop('disabled', false).html('<i class="fas fa-right-to-bracket me-2"></i>Sign In');
+        $('#password').val('').focus();
+      });
+    });
+  });
+  function showAlert(msg) {
+    $('#loginAlertMsg').text(msg);
+    $('#loginAlert').show();
+  }
+  </script>
+</body>
+</html>

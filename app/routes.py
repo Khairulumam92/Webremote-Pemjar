@@ -1,14 +1,38 @@
 import base64
 from datetime import datetime, timezone
-from flask import Blueprint, render_template, request, jsonify, abort, Response
+from flask import Blueprint, render_template, request, jsonify, abort, Response, session, redirect, url_for
 from . import db
 from .models import Server, ServerGroup, CommandSnippet
 from .ssh_client import RemoteSSHClient
+from .auth import login_required, WEBREMOTE_USER, WEBREMOTE_PASS
 
 bp = Blueprint('main', __name__)
 
 
+@bp.route('/login', methods=['GET', 'POST'])
+def login_page():
+    if request.method == 'POST':
+        data = request.get_json(silent=True) or request.form
+        username = data.get('username', '').strip()
+        password = data.get('password', '')
+        if username == WEBREMOTE_USER and password == WEBREMOTE_PASS:
+            session.permanent = True
+            session['logged_in'] = True
+            session['username'] = username
+            next_url = request.args.get('next', '/')
+            return jsonify({'ok': True, 'next': next_url})
+        return jsonify({'error': 'Invalid username or password'}), 401
+    return render_template('login.html')
+
+
+@bp.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('main.login_page'))
+
+
 @bp.route('/')
+@login_required
 def index():
     servers = Server.query.order_by(Server.created_at.desc()).all()
     groups = ServerGroup.query.order_by(ServerGroup.name).all()
@@ -17,6 +41,7 @@ def index():
 
 
 @bp.route('/servers')
+@login_required
 def servers_page():
     servers = Server.query.order_by(Server.created_at.desc()).all()
     groups = ServerGroup.query.order_by(ServerGroup.name).all()
@@ -25,12 +50,14 @@ def servers_page():
 
 
 @bp.route('/api/servers', methods=['GET'])
+@login_required
 def list_servers():
     servers = Server.query.order_by(Server.created_at.desc()).all()
     return jsonify([s.to_dict() for s in servers])
 
 
 @bp.route('/api/servers', methods=['POST'])
+@login_required
 def add_server():
     data = request.get_json(silent=True) or request.form
     name = data.get('name', '').strip()
@@ -65,6 +92,7 @@ def add_server():
 
 
 @bp.route('/api/servers/<int:server_id>', methods=['DELETE'])
+@login_required
 def delete_server(server_id):
     server = db.session.get(Server, server_id)
     if not server:
@@ -75,6 +103,7 @@ def delete_server(server_id):
 
 
 @bp.route('/api/servers/<int:server_id>', methods=['PUT'])
+@login_required
 def update_server(server_id):
     server = db.session.get(Server, server_id)
     if not server:
@@ -100,6 +129,7 @@ def update_server(server_id):
 
 
 @bp.route('/api/servers/<int:server_id>/test', methods=['POST'])
+@login_required
 def test_server(server_id):
     server = db.session.get(Server, server_id)
     if not server:
@@ -114,6 +144,7 @@ def test_server(server_id):
 
 
 @bp.route('/api/servers/<int:server_id>/monitor', methods=['GET'])
+@login_required
 def monitor_server(server_id):
     server = db.session.get(Server, server_id)
     if not server:
@@ -129,6 +160,7 @@ def monitor_server(server_id):
 
 
 @bp.route('/terminal/<int:server_id>')
+@login_required
 def terminal_page(server_id):
     server = db.session.get(Server, server_id)
     if not server:
@@ -138,6 +170,7 @@ def terminal_page(server_id):
 
 
 @bp.route('/batch')
+@login_required
 def batch_page():
     servers = Server.query.order_by(Server.name).all()
     snippets = CommandSnippet.query.order_by(CommandSnippet.name).all()
@@ -146,6 +179,7 @@ def batch_page():
 
 
 @bp.route('/api/batch/run', methods=['POST'])
+@login_required
 def batch_run():
     data = request.get_json(silent=True) or {}
     server_ids = data.get('server_ids', [])
@@ -186,6 +220,7 @@ def batch_run():
 # ── SFTP File Manager ──
 
 @bp.route('/files/<int:server_id>')
+@login_required
 def files_page(server_id):
     server = db.session.get(Server, server_id)
     if not server:
@@ -194,6 +229,7 @@ def files_page(server_id):
 
 
 @bp.route('/api/sftp/<int:server_id>/list', methods=['POST'])
+@login_required
 def sftp_list(server_id):
     server = db.session.get(Server, server_id)
     if not server:
@@ -212,6 +248,7 @@ def sftp_list(server_id):
 
 
 @bp.route('/api/sftp/<int:server_id>/download', methods=['POST'])
+@login_required
 def sftp_download(server_id):
     server = db.session.get(Server, server_id)
     if not server:
@@ -235,6 +272,7 @@ def sftp_download(server_id):
 
 
 @bp.route('/api/sftp/<int:server_id>/upload', methods=['POST'])
+@login_required
 def sftp_upload(server_id):
     server = db.session.get(Server, server_id)
     if not server:
@@ -257,6 +295,7 @@ def sftp_upload(server_id):
 
 
 @bp.route('/api/sftp/<int:server_id>/delete', methods=['POST'])
+@login_required
 def sftp_delete(server_id):
     server = db.session.get(Server, server_id)
     if not server:
@@ -275,6 +314,7 @@ def sftp_delete(server_id):
 
 
 @bp.route('/api/sftp/<int:server_id>/mkdir', methods=['POST'])
+@login_required
 def sftp_mkdir(server_id):
     server = db.session.get(Server, server_id)
     if not server:
@@ -293,6 +333,7 @@ def sftp_mkdir(server_id):
 
 
 @bp.route('/api/sftp/<int:server_id>/content', methods=['POST'])
+@login_required
 def sftp_content(server_id):
     server = db.session.get(Server, server_id)
     if not server:
@@ -319,12 +360,14 @@ def sftp_content(server_id):
 # ── Server Groups ──
 
 @bp.route('/api/groups', methods=['GET'])
+@login_required
 def list_groups():
     groups = ServerGroup.query.order_by(ServerGroup.name).all()
     return jsonify([g.to_dict() for g in groups])
 
 
 @bp.route('/api/groups', methods=['POST'])
+@login_required
 def add_group():
     data = request.get_json(silent=True) or {}
     name = data.get('name', '').strip()
@@ -338,6 +381,7 @@ def add_group():
 
 
 @bp.route('/api/groups/<int:group_id>', methods=['DELETE'])
+@login_required
 def delete_group(group_id):
     grp = db.session.get(ServerGroup, group_id)
     if not grp:
@@ -351,12 +395,14 @@ def delete_group(group_id):
 # ── Command Snippets ──
 
 @bp.route('/api/snippets', methods=['GET'])
+@login_required
 def list_snippets():
     snippets = CommandSnippet.query.order_by(CommandSnippet.name).all()
     return jsonify([s.to_dict() for s in snippets])
 
 
 @bp.route('/api/snippets', methods=['POST'])
+@login_required
 def add_snippet():
     data = request.get_json(silent=True) or {}
     name = data.get('name', '').strip()
@@ -372,6 +418,7 @@ def add_snippet():
 
 
 @bp.route('/api/snippets/<int:snippet_id>', methods=['DELETE'])
+@login_required
 def delete_snippet(snippet_id):
     snip = db.session.get(CommandSnippet, snippet_id)
     if not snip:

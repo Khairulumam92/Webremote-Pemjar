@@ -18,6 +18,7 @@ def create_app():
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'webremote-change-me-in-production')
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(data_dir, 'webremote.db')
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    app.config['PERMANENT_SESSION_LIFETIME'] = 86400
 
     db.init_app(app)
     socketio.init_app(app, cors_allowed_origins='*', async_mode='gevent')  # NOTE: restrict in production

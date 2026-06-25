@@ -3,6 +3,10 @@ services:
     build: .
     container_name: webremote-app
     restart: unless-stopped
+    environment:
+      - WEBREMOTE_USER=${WEBREMOTE_USER:-admin}
+      - WEBREMOTE_PASS=${WEBREMOTE_PASS:-webremote}
+      - SECRET_KEY=${SECRET_KEY:-webremote-change-me-in-production}
     volumes:
       - ./data:/app/data
     networks:
