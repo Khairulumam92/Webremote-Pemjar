@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}Terminal — {{ server.name }}{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css">
+<style>
+  #terminal-container { height: calc(100vh - 112px); width: 100%; }
+  .terminal-chrome {
+    display: flex; align-items: center; gap: 0.75rem;
+    padding: 0.5rem 1.25rem;
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 0.78rem;
+  }
+  .terminal-chrome .host-info { display: flex; align-items: center; gap: 0.5rem; }
+  .terminal-chrome code { background: var(--bg-root); padding: 0.15rem 0.5rem; border-radius: var(--radius-sm); font-size: 0.72rem; }
+  .mode-badge { font-size: 0.6rem; padding: 0.15rem 0.45rem; border-radius: 100px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+  .mode-shell { background: var(--success-soft); color: var(--success); }
+  .mode-command { background: var(--warning-soft); color: var(--warning); }
+  .snippet-dropdown .dropdown-menu { background: var(--bg-elevated); border: 1px solid var(--border-default); border-radius: var(--radius-md); min-width: 220px; padding: 0.3rem; }
+  .snippet-dropdown .dropdown-item { font-size: 0.8rem; padding: 0.4rem 0.75rem; border-radius: var(--radius-sm); color: var(--text-primary); }
+  .snippet-dropdown .dropdown-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .snippet-dropdown .dropdown-item code { display: block; font-size: 0.67rem; color: var(--text-accent); margin-top: 0.1rem; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="terminal-chrome">
+  <a href="/servers" class="btn btn-outline btn-sm" title="Back"><i class="fas fa-arrow-left"></i></a>
+  <div class="host-info">
+    <strong style="font-family:var(--font-mono);font-size:0.85rem">{{ server.name }}</strong>
+    <code>{{ server.host }}:{{ server.port }}</code>
+    <span class="text-muted" style="font-size:0.72rem">{{ server.username }}</span>
+  </div>
+  <div class="ms-auto d-flex align-items-center gap-2">
+    <div class="dropdown snippet-dropdown">
+      <button class="btn btn-outline-info btn-sm dropdown-toggle" data-bs-toggle="dropdown" title="Quick Snippets"><i class="fas fa-code"></i> Snippets</button>
+      <div class="dropdown-menu dropdown-menu-end">
+        {% for sn in snippets %}
+        <a class="dropdown-item snippet-item" href="#" data-cmd="{{ sn.command }}" data-name="{{ sn.name }}">
+          <span>{{ sn.name }}</span><code>{{ sn.command[:50] }}{% if sn.command|length > 50 %}…{% endif %}</code>
+        </a>
+        {% else %}
+        <span class="dropdown-item text-muted" style="font-size:0.75rem">No snippets saved</span>
+        {% endfor %}
+      </div>
+    </div>
+    <button class="btn btn-outline-warning btn-sm" id="switchModeBtn" title="Toggle Shell/Command Mode">
+      <i class="fas fa-exchange-alt"></i> <span id="modeLabel">Mode</span>
+    </button>
+    <span class="status-badge status-unknown" id="connStatus">Connecting</span>
+    <button class="btn btn-outline-warning btn-sm" id="reconnectBtn" style="display:none" onclick="reconnect()"><i class="fas fa-rotate"></i></button>
+  </div>
+</div>
+<div id="terminal-container"></div>
+{% endblock %}
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+<script>
+const TERMINAL_SERVER_ID = {{ server.id }};
+let currentMode = 'command';
+
+function reconnect() { window.location.reload(); }
+
+$(function() {
+  const term = new Terminal({
+    cursorBlink: true, cursorStyle: 'bar', fontSize: 13.5, lineHeight: 1.3,
+    fontFamily: "'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'Consolas', monospace",
+    theme: {
+      background: '#080b11', foreground: '#e1e7ef', cursor: '#f0883e',
+      selectionBackground: 'rgba(240,136,62,0.25)',
+      black: '#4a5568', brightBlack: '#6b7a8d',
+      red: '#ff5e5e', brightRed: '#ff8a8a',
+      green: '#4ade80', brightGreen: '#86efac',
+      yellow: '#fbbf24', brightYellow: '#fcd34d',
+      blue: '#38bdf8', brightBlue: '#7dd3fc',
+      magenta: '#c084fc', brightMagenta: '#d8b4fe',
+      cyan: '#22d3ee', brightCyan: '#67e8f9',
+      white: '#e1e7ef', brightWhite: '#f8fafc',
+    },
+  });
+  const fit = new FitAddon.FitAddon();
+  term.loadAddon(fit);
+  term.open(document.getElementById('terminal-container'));
+  fit.fit();
+
+  const socket = io('/terminal', {
+    query: { server_id: TERMINAL_SERVER_ID },
+    transports: ['websocket', 'polling'],
+  });
+
+  socket.on('connect', () => {
+    $('#connStatus').removeClass().addClass('status-badge status-online').text('Online');
+    $('#reconnectBtn').hide();
+  });
+
+  socket.on('mode', (data) => {
+    currentMode = data.mode;
+    const label = data.mode === 'shell' ? 'Shell' : 'CMD';
+    $('#modeLabel').text(label);
+    $('#switchModeBtn').toggleClass('btn-outline-warning btn-outline-success', data.mode === 'shell');
+  });
+
+  socket.on('output', (data) => { if (data.data) term.write(data.data); });
+
+  socket.on('error', (data) => {
+    term.writeln('\r\n\x1b[31m\x1b[1m[ERROR]\x1b[0m ' + (data.message || 'Connection failed'));
+    $('#connStatus').removeClass().addClass('status-badge status-offline').text('Offline');
+    $('#reconnectBtn').show();
+  });
+
+  socket.on('disconnect', () => {
+    term.writeln('\r\n\x1b[33m\x1b[1m[Disconnected]\x1b[0m');
+    $('#connStatus').removeClass().addClass('status-badge status-offline').text('Offline');
+    $('#reconnectBtn').show();
+  });
+
+  term.onData((data) => { socket.emit('input', { data }); });
+  term.onResize(({ cols, rows }) => { socket.emit('resize', { cols, rows }); });
+  new ResizeObserver(() => fit.fit()).observe(document.getElementById('terminal-container'));
+
+  $('#switchModeBtn').click(() => socket.emit('switch_mode'));
+  $(document).on('click', '.snippet-item', function(e) {
+    e.preventDefault();
+    const cmd = $(this).data('cmd');
+    if (currentMode === 'command') {
+      term.write(cmd + '\r');
+      socket.emit('input', { data: cmd + '\r' });
+    } else {
+      term.paste(cmd);
+      socket.emit('input', { data: cmd + '\r' });
+    }
+  });
+});
+</script>
+{% endblock %}

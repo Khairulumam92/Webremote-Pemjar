@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}Batch Command{% endblock %}
+{% block content %}
+<div class="content-header">
+  <div>
+    <h2><i class="fas fa-layer-group"></i> Batch Command</h2>
+    <p>Execute commands across multiple servers</p>
+  </div>
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-header"><i class="fas fa-sliders"></i> Configuration</div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label">Quick Filter</label>
+          <select class="form-select form-select-sm mb-2" id="batchGroupFilter">
+            <option value="all">All Servers</option>
+            {% for g in groups %}
+            <option value="{{ g.id }}">{{ g.name }}</option>
+            {% endfor %}
+          </select>
+          <div class="btn-group mb-2">
+            <button class="btn btn-outline btn-sm" id="selectAllBtn">Select All</button>
+            <button class="btn btn-outline btn-sm" id="deselectAllBtn">Deselect All</button>
+          </div>
+          <label class="form-label">Target Servers</label>
+          <div class="server-selection" style="max-height:200px;overflow-y:auto" id="batchServerList">
+            {% for s in servers %}
+            <div class="form-check server-cb-row" data-group="{{ s.group_id or 0 }}">
+              <input class="form-check-input server-cb" type="checkbox" value="{{ s.id }}" id="cb{{ s.id }}" checked>
+              <label class="form-check-label" for="cb{{ s.id }}" style="font-size:0.82rem">
+                {{ s.name }}
+                <code style="font-size:0.68rem;background:var(--bg-root);padding:0.1rem 0.3rem;border-radius:3px;display:inline-block;margin-left:0.2rem">{{ s.host }}</code>
+                {% if s.group %}<span class="group-badge ms-1" style="background:{{ s.group.color }};font-size:0.6rem;padding:0.1rem 0.35rem">{{ s.group.name }}</span>{% endif %}
+              </label>
+            </div>
+            {% else %}
+            <p class="text-muted mb-0" style="font-size:0.8rem">No servers. <a href="/servers">Add some.</a></p>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Quick Snippets</label>
+          <div class="d-flex flex-wrap gap-1 mb-2">
+            {% for sn in snippets %}
+            <button class="btn btn-outline-info btn-sm snippet-btn font-mono" data-cmd="{{ sn.command }}" title="{{ sn.description or sn.name }}" style="font-size:0.68rem;padding:0.2rem 0.5rem">{{ sn.name }}</button>
+            {% else %}
+            <span class="text-muted" style="font-size:0.75rem">No snippets saved</span>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Command</label>
+          <textarea class="form-control font-mono" id="batchCommand" rows="3" style="font-size:0.78rem;resize:vertical">ip address print</textarea>
+        </div>
+        <button class="btn btn-primary w-100" id="runBatchBtn" onclick="runBatch()">
+          <i class="fas fa-play"></i> Execute
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-header">
+        <span><i class="fas fa-terminal"></i> Results</span>
+        <span id="batchProgress" class="status-badge status-unknown">Ready</span>
+      </div>
+      <div class="card-body p-0" id="batchResults">
+        <div class="empty-state" id="batchPlaceholder" style="padding:3rem 2rem">
+          <i class="fas fa-arrow-left"></i>
+          <h4>No results yet</h4>
+          <p>Select servers and a command, then click Execute.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+$(function() {
+  $('#batchGroupFilter').change(function() {
+    const val = $(this).val();
+    if (val === 'all') $('.server-cb-row').show();
+    else { $('.server-cb-row').hide(); $('.server-cb-row[data-group="' + val + '"]').show(); }
+  });
+  $('#selectAllBtn').click(() => $('.server-cb:visible').prop('checked', true));
+  $('#deselectAllBtn').click(() => $('.server-cb:visible').prop('checked', false));
+  $('.snippet-btn').click(function() { $('#batchCommand').val($(this).data('cmd')); });
+});
+
+function runBatch() {
+  const ids = $('.server-cb:checked').map((i, el) => parseInt(el.value)).get();
+  const cmd = $('#batchCommand').val().trim();
+  if (!ids.length) { toast('Select at least one server.', 'warning'); return; }
+  if (!cmd) { toast('Enter a command.', 'warning'); return; }
+
+  const $btn = $('#runBatchBtn').prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Running…');
+  $('#batchProgress').removeClass().addClass('status-badge status-unknown').text('Running');
+  $('#batchPlaceholder').hide();
+  $('#batchResults').find('.batch-result-item').remove();
+  $('#batchResults').append('<div class="loading-spinner"><div class="spinner-border spinner-border-sm"></div> Executing on ' + ids.length + ' server(s)…</div>');
+
+  $.post('/api/batch/run', JSON.stringify({ server_ids: ids, command: cmd }), 'json')
+    .done(function(results) {
+      $('#batchResults .loading-spinner').remove();
+      results.forEach(r => {
+        const icon = r.status === 'ok' ? 'fa-circle-check text-success' : 'fa-circle-xmark text-danger';
+        const output = r.output || '(no output)';
+        const stderr = r.stderr ? '<pre class="text-danger mt-1 mb-0">' + escHtml(r.stderr) + '</pre>' : '';
+        $('#batchResults').append(
+          '<div class="batch-result-item ' + (r.status === 'ok' ? 'border-success' : 'border-danger') + '">'
+          + '<div class="d-flex justify-content-between align-items-start mb-2">'
+          + '<strong><i class="fas ' + icon + ' me-2"></i>' + escHtml(r.name) + '</strong>'
+          + '<span class="badge" style="background:' + (r.status === 'ok' ? 'var(--success-soft)' : 'var(--danger-soft)') + ';color:' + (r.status === 'ok' ? 'var(--success)' : 'var(--danger)') + ';font-size:0.65rem">exit ' + r.exit_code + '</span>'
+          + '</div><pre>' + escHtml(output) + '</pre>' + stderr + '</div>');
+      });
+      $('#batchProgress').removeClass().addClass('status-badge status-online').text('Done');
+      $btn.prop('disabled', false).html('<i class="fas fa-play"></i> Execute');
+    })
+    .fail(function(xhr) {
+      $('#batchResults .loading-spinner').remove();
+      toast('Failed: ' + (xhr.responseJSON?.error || xhr.statusText), 'danger');
+      $('#batchProgress').removeClass().addClass('status-badge status-offline').text('Failed');
+      $btn.prop('disabled', false).html('<i class="fas fa-play"></i> Execute');
+    });
+}
+function escHtml(s) { return $('<div>').text(s).html(); }
+</script>
+{% endblock %}

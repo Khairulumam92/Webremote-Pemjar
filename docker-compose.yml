@@ -1,0 +1,26 @@
+services:
+  webremote:
+    build: .
+    container_name: webremote-app
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+    networks:
+      - webremote-net
+
+  nginx:
+    image: nginx:alpine
+    container_name: webremote-nginx
+    restart: unless-stopped
+    ports:
+      - "8090:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - webremote
+    networks:
+      - webremote-net
+
+networks:
+  webremote-net:
+    driver: bridge

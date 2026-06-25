@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebRemote — {% block title %}Dashboard{% endblock %}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <div class="d-flex">
+    <nav class="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-icon"><i class="fas fa-terminal"></i></div>
+        <div class="brand-text">Web<span>Remote</span></div>
+      </div>
+      <ul class="sidebar-nav nav flex-column">
+        <li class="nav-section">Overview</li>
+        <li><a class="nav-link {% if request.path == '/' %}active{% endif %}" href="/"><i class="fas fa-chart-simple"></i> Dashboard</a></li>
+        <li><a class="nav-link {% if request.path.startswith('/terminal') %}active{% endif %}" href="/servers"><i class="fas fa-display"></i> Terminal</a></li>
+        <li class="nav-section mt-2">Management</li>
+        <li><a class="nav-link {% if request.path.startswith('/servers') %}active{% endif %}" href="/servers"><i class="fas fa-server"></i> Servers</a></li>
+        <li><a class="nav-link {% if request.path == '/batch' %}active{% endif %}" href="/batch"><i class="fas fa-layer-group"></i> Batch</a></li>
+        <li><a class="nav-link {% if request.path.startswith('/files') %}active{% endif %}" href="/servers"><i class="fas fa-folder-tree"></i> Files</a></li>
+      </ul>
+      <div class="sidebar-footer">
+        <span>v1.0</span>
+        <kbd>8090</kbd>
+      </div>
+    </nav>
+    <main class="main-content">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>
