@@ -74,7 +74,7 @@ class RemoteSSHClient:
         try:
             self.channel = self.client.invoke_shell(
                 term=term, width=cols, height=rows)
-            self.channel.setblocking(0)
+            self.channel.settimeout(0.3)
             return self.channel, 'shell'
         except Exception:
             return None, 'command'
@@ -88,15 +88,7 @@ class RemoteSSHClient:
 
     def shell_recv(self, nbytes=4096):
         try:
-            if self.channel and self.channel.recv_ready():
-                return self.channel.recv(nbytes).decode('utf-8', errors='ignore')
-        except Exception:
-            pass
-        return ''
-
-    def shell_recv_fallback(self, nbytes=4096):
-        try:
-            if self.channel:
+            if self.channel and self.channel.active:
                 data = self.channel.recv(nbytes)
                 if data:
                     return data.decode('utf-8', errors='ignore')

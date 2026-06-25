@@ -41,6 +41,7 @@ def on_connect():
     emit('mode', {'mode': mode, 'os': os_type})
 
     if mode == 'shell':
+        time.sleep(0.2)
         _start_shell_reader(ssh, sid)
     else:
         emit('output', {'data': f'\r\n\x1b[36m[Command Mode - {os_type.upper()}]\x1b[0m\r\n'
@@ -59,11 +60,7 @@ def _start_shell_reader(ssh, sid):
                 if data:
                     socketio.emit('output', {'data': data}, to=sid, namespace='/terminal')
                 else:
-                    fallback = ssh.shell_recv_fallback(256)
-                    if fallback:
-                        socketio.emit('output', {'data': fallback}, to=sid, namespace='/terminal')
-                    else:
-                        time.sleep(0.05)
+                    time.sleep(0.1)
             except Exception:
                 break
 
