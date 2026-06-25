@@ -57,6 +57,8 @@ def _start_shell_reader(ssh, sid):
                 break
             try:
                 data = ssh.shell_recv(4096)
+                if data is None:
+                    break
                 if data:
                     socketio.emit('output', {'data': data}, to=sid, namespace='/terminal')
                 else:

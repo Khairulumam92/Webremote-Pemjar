@@ -28,6 +28,9 @@ class RemoteSSHClient:
             allow_agent=False,
             look_for_keys=False,
         )
+        transport = self.client.get_transport()
+        if transport:
+            transport.set_keepalive(30)
         return True
 
     def detect_os(self):
@@ -74,7 +77,7 @@ class RemoteSSHClient:
         try:
             self.channel = self.client.invoke_shell(
                 term=term, width=cols, height=rows)
-            self.channel.settimeout(0.3)
+            self.channel.settimeout(0.5)
             return self.channel, 'shell'
         except Exception:
             return None, 'command'
@@ -87,13 +90,18 @@ class RemoteSSHClient:
                 pass
 
     def shell_recv(self, nbytes=4096):
+        if not self.channel or not self.channel.active:
+            return None
         try:
-            if self.channel and self.channel.active:
-                data = self.channel.recv(nbytes)
-                if data:
-                    return data.decode('utf-8', errors='ignore')
-        except Exception:
+            data = self.channel.recv(nbytes)
+            if data:
+                return data.decode('utf-8', errors='ignore')
+            if self.channel.closed or self.channel.eof_received:
+                return None
+        except socket.timeout:
             pass
+        except Exception:
+            return None
         return ''
 
     def resize_pty(self, cols, rows):
