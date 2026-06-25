@@ -34,18 +34,33 @@ class RemoteSSHClient:
         if self._os_type:
             return self._os_type
         try:
-            _, out, _ = self.client.exec_command('uname -s 2>/dev/null || ver 2>nul', timeout=5)
+            _, out, _ = self.client.exec_command('uname -s', timeout=5)
             output = out.read().decode('utf-8', errors='ignore').strip()
-            if 'Windows' in output or 'win32' in output.lower():
-                self._os_type = 'windows'
-            elif output:
+            if output and 'windows' not in output.lower():
                 self._os_type = 'linux'
-            else:
-                _, out2, _ = self.client.exec_command('echo %OS%', timeout=5)
-                out2_str = out2.read().decode('utf-8', errors='ignore').strip()
-                self._os_type = 'windows' if out2_str else 'linux'
+                return self._os_type
         except Exception:
-            self._os_type = 'linux'
+            pass
+
+        try:
+            _, out, _ = self.client.exec_command('cmd /c ver', timeout=5)
+            output = out.read().decode('utf-8', errors='ignore').strip()
+            if 'Windows' in output:
+                self._os_type = 'windows'
+                return self._os_type
+        except Exception:
+            pass
+
+        try:
+            _, out, _ = self.client.exec_command('echo %OS%', timeout=5)
+            out_str = out.read().decode('utf-8', errors='ignore').strip()
+            if out_str and 'windows' in out_str.lower():
+                self._os_type = 'windows'
+                return self._os_type
+        except Exception:
+            pass
+
+        self._os_type = 'linux'
         return self._os_type
 
     def exec(self, command, timeout=15):
@@ -99,7 +114,7 @@ class RemoteSSHClient:
     def exec_one(self, command, timeout=15):
         out, err, code = self.exec(command, timeout=timeout)
         result = out
-        if err:
+        if err and code != 0:
             result += '\r\n[STDERR] ' + err
         return result, code
 
@@ -189,61 +204,56 @@ class RemoteSSHClient:
         finally:
             self.close()
 
+    def _collect_system_info(self, os_type):
+        """Collect stats assuming an open connection. Does NOT connect or close."""
+        info = {'os': os_type, 'hostname': '', 'cpu': '', 'mem': '', 'disk': ''}
+
+        if os_type == 'linux':
+            _, out, _ = self.client.exec_command('hostname')
+            info['hostname'] = out.read().decode('utf-8', errors='ignore').strip()
+
+            _, out, _ = self.client.exec_command("top -bn1 | grep 'Cpu(s)' | awk '{print $2+$4\"%\"}'")
+            info['cpu'] = out.read().decode('utf-8', errors='ignore').strip()
+
+            _, out, _ = self.client.exec_command("free -m | awk '/Mem:/ {printf \"%.0f%%\", $3/$2*100}'")
+            info['mem'] = out.read().decode('utf-8', errors='ignore').strip()
+
+            _, out, _ = self.client.exec_command("df -h / | awk 'NR==2 {print $5}'")
+            info['disk'] = out.read().decode('utf-8', errors='ignore').strip()
+        else:
+            _, out, _ = self.client.exec_command('hostname')
+            info['hostname'] = out.read().decode('utf-8', errors='ignore').strip()
+
+            _, out, _ = self.client.exec_command(
+                'powershell -Command "(Get-CimInstance Win32_Processor).LoadPercentage"')
+            raw = out.read().decode('utf-8', errors='ignore').strip()
+            info['cpu'] = f'{raw}%' if raw else 'N/A'
+
+            _, out, _ = self.client.exec_command(
+                'powershell -Command "$os=Get-CimInstance Win32_OperatingSystem;'
+                '[math]::Round(($os.TotalVisibleMemorySize-$os.FreePhysicalMemory)/$os.TotalVisibleMemorySize*100)"')
+            raw = out.read().decode('utf-8', errors='ignore').strip()
+            info['mem'] = f'{raw}%' if raw else 'N/A'
+
+            _, out, _ = self.client.exec_command(
+                'powershell -Command "Get-PSDrive C | ForEach-Object '
+                '{ [math]::Round(($_.Used)/($_.Used+$_.Free)*100) }"')
+            raw = out.read().decode('utf-8', errors='ignore').strip()
+            info['disk'] = f'{raw}%' if raw else 'N/A'
+
+        return info
+
     def get_system_info(self):
+        """One-shot system info: connect, collect, close."""
         try:
             self.connect(timeout=8)
             os_type = self.detect_os()
-            info = {'os': os_type, 'hostname': '', 'cpu': '', 'mem': '', 'disk': ''}
-
-            if os_type == 'linux':
-                _, out, _ = self.client.exec_command('hostname')
-                info['hostname'] = out.read().decode('utf-8', errors='ignore').strip()
-
-                _, out, _ = self.client.exec_command("top -bn1 | grep 'Cpu(s)' | awk '{print $2+$4\"%\"}'")
-                info['cpu'] = out.read().decode('utf-8', errors='ignore').strip()
-
-                _, out, _ = self.client.exec_command("free -m | awk '/Mem:/ {printf \"%.0f%%\", $3/$2*100}'")
-                info['mem'] = out.read().decode('utf-8', errors='ignore').strip()
-
-                _, out, _ = self.client.exec_command("df -h / | awk 'NR==2 {print $5}'")
-                info['disk'] = out.read().decode('utf-8', errors='ignore').strip()
-            else:
-                _, out, _ = self.client.exec_command('echo %COMPUTERNAME%')
-                info['hostname'] = out.read().decode('utf-8', errors='ignore').strip()
-
-                _, out, _ = self.client.exec_command('wmic cpu get loadpercentage | findstr /r "[0-9]"')
-                info['cpu'] = out.read().decode('utf-8', errors='ignore').strip() + '%'
-
-                _, out, _ = self.client.exec_command(
-                    'wmic OS get TotalVisibleMemorySize,FreePhysicalMemory /format:csv | findstr /r "[0-9]"')
-                raw = out.read().decode('utf-8', errors='ignore').strip()
-                if raw:
-                    parts = raw.split(',')
-                    if len(parts) >= 3:
-                        try:
-                            free = int(parts[-2])
-                            total = int(parts[-1])
-                            pct = round((total - free) / total * 100)
-                            info['mem'] = f'{pct}%'
-                        except Exception:
-                            info['mem'] = 'N/A'
-
-                _, out, _ = self.client.exec_command(
-                    'wmic logicaldisk where "DeviceID=\'C:\'" get Size,FreeSpace /format:csv | findstr /r "[0-9]"')
-                raw2 = out.read().decode('utf-8', errors='ignore').strip()
-                if raw2:
-                    parts2 = raw2.split(',')
-                    if len(parts2) >= 3:
-                        try:
-                            free = int(parts2[-2])
-                            total = int(parts2[-1])
-                            pct = round((total - free) / total * 100)
-                            info['disk'] = f'{pct}%'
-                        except Exception:
-                            info['disk'] = 'N/A'
-
-            return info
+            return self._collect_system_info(os_type)
         except Exception:
             return None
         finally:
             self.close()
+
+    def poll_system_info(self, os_type=None):
+        """Poll stats on an already-open connection. OS type must be provided from first connect."""
+        return self._collect_system_info(os_type or self._os_type or 'linux')

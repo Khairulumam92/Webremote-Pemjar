@@ -27,18 +27,28 @@ def on_monitor_connect():
     monitor_sessions[sid] = {'server': server, 'running': True}
 
     def poll_loop():
+        srv = monitor_sessions[sid]['server']
+        client = RemoteSSHClient(srv)
+        try:
+            client.connect(timeout=8)
+            os_type = client.detect_os()
+        except Exception:
+            return
+
         while monitor_sessions.get(sid, {}).get('running'):
-            srv = monitor_sessions[sid]['server']
-            client = RemoteSSHClient(srv)
             try:
-                info = client.get_system_info()
+                info = client.poll_system_info(os_type)
                 if info:
                     socketio.emit('stats', info, to=sid, namespace='/monitor')
             except Exception:
-                pass
-            finally:
-                client.close()
+                try:
+                    client.connect(timeout=8)
+                except Exception:
+                    time.sleep(5)
+                    continue
             time.sleep(5)
+
+        client.close()
 
     thread = threading.Thread(target=poll_loop, daemon=True)
     thread.start()

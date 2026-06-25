@@ -104,11 +104,26 @@ function renderFiles(entries, parent, displayPath) {
 }
 
 function dl(p) {
-  const a = document.createElement('a');
-  a.href = '/api/sftp/' + FILES_SERVER_ID + '/download';
-  a.download = '';
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  $.post('/api/sftp/' + FILES_SERVER_ID + '/download', JSON.stringify({path: p}));
+  $.ajax({
+    url: '/api/sftp/' + FILES_SERVER_ID + '/download',
+    method: 'POST',
+    data: JSON.stringify({path: p}),
+    contentType: 'application/json',
+    xhrFields: { responseType: 'blob' }
+  }).done(function(blob, status, xhr) {
+    const disp = xhr.getResponseHeader('Content-Disposition') || '';
+    const match = disp.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+    const fname = match ? match[1].replace(/['"]/g, '') : p.split('/').pop();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fname;
+    document.body.appendChild(a); a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  }).fail(function() {
+    toast('Download failed', 'danger');
+  });
 }
 function vw(p) { viewerPath = p; $('#fileContentBody').html('<div class="loading-spinner"><div class="spinner-border spinner-border-sm" style="width:1rem;height:1rem"></div> Loading…</div>'); $('#fileContentTitle').text(p.split('/').pop()); new bootstrap.Modal('#fileContentModal').show();
   $.post('/api/sftp/' + FILES_SERVER_ID + '/content', JSON.stringify({path: p}), 'json')

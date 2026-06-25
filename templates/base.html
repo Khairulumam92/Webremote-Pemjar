@@ -19,11 +19,11 @@
       <ul class="sidebar-nav nav flex-column">
         <li class="nav-section">Overview</li>
         <li><a class="nav-link {% if request.path == '/' %}active{% endif %}" href="/"><i class="fas fa-chart-simple"></i> Dashboard</a></li>
-        <li><a class="nav-link {% if request.path.startswith('/terminal') %}active{% endif %}" href="/servers"><i class="fas fa-display"></i> Terminal</a></li>
+        <li><a class="nav-link" href="/servers"><i class="fas fa-display"></i> Terminal</a></li>
         <li class="nav-section mt-2">Management</li>
         <li><a class="nav-link {% if request.path.startswith('/servers') %}active{% endif %}" href="/servers"><i class="fas fa-server"></i> Servers</a></li>
         <li><a class="nav-link {% if request.path == '/batch' %}active{% endif %}" href="/batch"><i class="fas fa-layer-group"></i> Batch</a></li>
-        <li><a class="nav-link {% if request.path.startswith('/files') %}active{% endif %}" href="/servers"><i class="fas fa-folder-tree"></i> Files</a></li>
+        <li><a class="nav-link" href="/servers"><i class="fas fa-folder-tree"></i> Files</a></li>
       </ul>
       <div class="sidebar-footer">
         <span>v1.0</span>

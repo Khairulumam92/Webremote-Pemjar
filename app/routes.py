@@ -1,4 +1,3 @@
-import json
 import base64
 from datetime import datetime, timezone
 from flask import Blueprint, render_template, request, jsonify, abort, Response

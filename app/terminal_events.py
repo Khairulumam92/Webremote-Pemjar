@@ -1,3 +1,4 @@
+import re
 import threading
 import time
 from flask import request
@@ -34,10 +35,7 @@ def on_connect():
     sid = request.sid
     os_type = ssh.detect_os()
 
-    try:
-        channel, mode = ssh.open_shell()
-    except Exception:
-        channel, mode = None, 'command'
+    channel, mode = ssh.open_shell()
 
     clients[sid] = {'ssh': ssh, 'server_id': server_id, 'mode': mode, 'os': os_type}
     emit('mode', {'mode': mode, 'os': os_type})
@@ -54,6 +52,8 @@ def on_connect():
 def _start_shell_reader(ssh, sid):
     def reader():
         while True:
+            if sid not in clients:
+                break
             try:
                 data = ssh.shell_recv(4096)
                 if data:
@@ -130,8 +130,9 @@ def _flush_command_buffer(sid, entry):
 
 
 def _auto_complete(ssh, sid, cmd):
+    safe_cmd = re.sub(r'[;&|`$(){}\[\]!\\''\"<>\n\r]', '', cmd)
     try:
-        out, _, _ = ssh.exec(f'compgen -c {cmd} 2>/dev/null || echo "{cmd}"')
+        out, _, _ = ssh.exec(f'compgen -c {safe_cmd} 2>/dev/null || echo "{safe_cmd}"')
         matches = [l for l in out.strip().split('\n') if l]
         if len(matches) > 1:
             socketio.emit('output', {'data': '\r\n' + '  '.join(matches) + '\r\n'}, to=sid, namespace='/terminal')
